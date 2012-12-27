@@ -56,6 +56,7 @@ import qualified Lamdu.VersionControl as VersionControl
 import qualified Lamdu.WidgetEnvT as WE
 import qualified Lamdu.WidgetIds as WidgetIds
 import qualified System.Directory as Directory
+import qualified System.Remote.Monitoring as Monitoring
 
 data ParsedOpts = ParsedOpts
   { shouldDeleteDB :: Bool
@@ -80,6 +81,7 @@ parseArgs =
 
 main :: IO ()
 main = do
+  _ <- Monitoring.forkServer "localhost" 8080
   args <- getArgs
   home <- Directory.getHomeDirectory
   let lamduDir = home </> ".lamdu"
