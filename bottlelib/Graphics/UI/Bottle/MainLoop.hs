@@ -6,14 +6,13 @@ module Graphics.UI.Bottle.MainLoop
     , mainLoopWidget
     ) where
 
-import           Prelude.Compat
-
 import           Control.Concurrent (ThreadId, killThread, myThreadId)
 import           Control.Concurrent.STM.TVar
 import           Control.Concurrent.Utils (forkIOUnmasked)
 import           Control.Exception (bracket, onException)
 import           Control.Lens (Lens')
 import           Control.Lens.Operators
+import           Control.Lens.Tuple
 import           Control.Monad (void, when, unless, forever)
 import qualified Control.Monad.STM as STM
 import           Data.IORef
@@ -31,10 +30,15 @@ import qualified Graphics.Rendering.OpenGL.GL as GL
 import           Graphics.UI.Bottle.Animation (AnimId)
 import qualified Graphics.UI.Bottle.Animation as Anim
 import qualified Graphics.UI.Bottle.EventMap as E
+import           Graphics.UI.Bottle.SizedFont (SizedFont)
+import qualified Graphics.UI.Bottle.SizedFont as SizedFont
 import           Graphics.UI.Bottle.Widget (Widget)
 import qualified Graphics.UI.Bottle.Widget as Widget
 import qualified Graphics.UI.GLFW as GLFW
 import           Graphics.UI.GLFW.Events (KeyEvent, Event(..), Result(..), eventLoop)
+import           Text.Printf
+
+import           Prelude.Compat
 
 data AnimConfig = AnimConfig
     { acTimePeriod :: NominalDiffTime
@@ -60,8 +64,19 @@ windowSize win =
         (x, y) <- GLFW.getFramebufferSize win
         return $ fromIntegral <$> Vector2 x y
 
-mainLoopImage :: GLFW.Window -> (Widget.Size -> ImageHandlers) -> IO ()
-mainLoopImage win imageHandlers =
+withTimeGap :: IO ((NominalDiffTime -> IO a) -> IO a)
+withTimeGap =
+    do
+        timeRef <- newIORef =<< getCurrentTime
+        return $ \act ->
+            do
+                prevTime <- readIORef timeRef
+                curTime <- getCurrentTime
+                writeIORef timeRef curTime
+                act (curTime `diffUTCTime` prevTime)
+
+mainLoopImage :: SizedFont -> GLFW.Window -> (Widget.Size -> ImageHandlers) -> IO ()
+mainLoopImage font win imageHandlers =
     do
         frameBufferSize <- newIORef =<< windowSize win
         let handleEvent handlers (EventKey keyEvent) =
@@ -74,25 +89,37 @@ mainLoopImage win imageHandlers =
                 do
                     writeIORef frameBufferSize (fromIntegral <$> size)
                     return ERRefresh
-        let handleEvents events =
+        let handleEvents events timeGap =
                 do
+                    let fps = 1 / timeGap
                     winSize <- readIORef frameBufferSize
                     let handlers = imageHandlers winSize
                     eventResult <- mconcat <$> traverse (handleEvent handlers) events
                     case eventResult of
                         ERQuit -> return ResultQuit
-                        ERRefresh -> imageRefresh handlers >>= draw winSize
+                        ERRefresh -> imageRefresh handlers >>= draw fps winSize
                         ERNone ->
                             imageUpdate handlers >>=
-                            maybe (return ResultNone) (draw winSize)
-        eventLoop win handleEvents
+                            maybe (return ResultNone) (draw fps winSize)
+        timeGap <- withTimeGap
+        eventLoop win $ timeGap . handleEvents
     where
-        draw winSize@(Vector2 winSizeX winSizeY) image =
+        draw fps winSize@(Vector2 winSizeX winSizeY) image =
             do
                 GL.viewport $=
                     (GL.Position 0 0,
                      GL.Size (round winSizeX) (round winSizeY))
-                image
+                let fpsDouble :: Double
+                    fpsDouble = realToFrac fps
+                    fpsStr = printf "%02.2g" fpsDouble
+                    textSize = SizedFont.bounding (SizedFont.textSize font fpsStr)
+                    textWidth = textSize ^. _1
+                let fpsImage =
+                        SizedFont.render font fpsStr
+                        & ( DrawUtils.translate
+                            (Vector2 (winSizeX-textWidth) 0)
+                          %%)
+                image <> fpsImage
                     & (DrawUtils.translate (Vector2 (-1) 1) <>
                        DrawUtils.scale (Vector2 (2/winSizeX) (-2/winSizeY)) %%)
                     & let Vector2 glPixelRatioX glPixelRatioY = winSize / 2 -- GL range is -1..1
@@ -182,8 +209,8 @@ killSelfOnError action =
 desiredFrameRate :: Num a => a
 desiredFrameRate = 60
 
-mainLoopAnim :: GLFW.Window -> IO AnimConfig -> (Widget.Size -> AnimHandlers) -> IO ()
-mainLoopAnim win getAnimationConfig animHandlers =
+mainLoopAnim :: SizedFont -> GLFW.Window -> IO AnimConfig -> (Widget.Size -> AnimHandlers) -> IO ()
+mainLoopAnim font win getAnimationConfig animHandlers =
     do
         initialWinSize <- windowSize win
         frameStateVar <-
@@ -197,7 +224,7 @@ mainLoopAnim win getAnimationConfig animHandlers =
             , _tsvReversedEvents = []
             }
         eventHandler <- killSelfOnError (eventHandlerThread frameStateVar eventTVar getAnimationConfig animHandlers)
-        withForkedIO eventHandler $ mainLoopAnimThread frameStateVar eventTVar win
+        withForkedIO eventHandler $ mainLoopAnimThread font frameStateVar eventTVar win
 
 waitForEvent :: TVar ThreadSyncVar -> IO ThreadSyncVar
 waitForEvent eventTVar =
@@ -258,9 +285,9 @@ eventHandlerThread frameStateVar eventTVar getAnimationConfig animHandlers =
                     -- up
                     GLFW.postEmptyEvent
 
-mainLoopAnimThread :: TVar AnimState -> TVar ThreadSyncVar -> GLFW.Window -> IO ()
-mainLoopAnimThread frameStateVar eventTVar win =
-    mainLoopImage win $ \size ->
+mainLoopAnimThread :: SizedFont -> TVar AnimState -> TVar ThreadSyncVar -> GLFW.Window -> IO ()
+mainLoopAnimThread font frameStateVar eventTVar win =
+    mainLoopImage font win $ \size ->
     ImageHandlers
     { imageEventHandler = \event -> (tsvReversedEvents %~ (event :)) & updateTVar
     , imageRefresh =
@@ -300,13 +327,13 @@ mainLoopAnimThread frameStateVar eventTVar win =
             FinalFrame -> Just $ Anim.draw frame
             NotAnimating -> Nothing
 
-mainLoopWidget :: GLFW.Window -> IO Bool -> (Widget.Size -> IO (Widget IO)) -> IO AnimConfig -> IO ()
-mainLoopWidget win widgetTickHandler mkWidgetUnmemod getAnimationConfig =
+mainLoopWidget :: SizedFont -> GLFW.Window -> IO Bool -> (Widget.Size -> IO (Widget IO)) -> IO AnimConfig -> IO ()
+mainLoopWidget font win widgetTickHandler mkWidgetUnmemod getAnimationConfig =
     do
         mkWidgetRef <- newIORef =<< memoIO mkWidgetUnmemod
         let newWidget = writeIORef mkWidgetRef =<< memoIO mkWidgetUnmemod
             getWidget size = ($ size) =<< readIORef mkWidgetRef
-        mainLoopAnim win getAnimationConfig $ \size -> AnimHandlers
+        mainLoopAnim font win getAnimationConfig $ \size -> AnimHandlers
             { animTickHandler =
                 do
                     anyUpdate <- widgetTickHandler

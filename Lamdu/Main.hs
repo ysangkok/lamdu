@@ -17,6 +17,7 @@ import qualified Data.Store.Transaction as Transaction
 import           Data.Time.Clock (getCurrentTime)
 import           GHC.Conc (setNumCapabilities, getNumProcessors)
 import           Graphics.UI.Bottle.MainLoop (mainLoopWidget)
+import           Graphics.UI.Bottle.SizedFont (SizedFont(..))
 import           Graphics.UI.Bottle.Widget (Widget)
 import qualified Graphics.UI.Bottle.Widget as Widget
 import qualified Graphics.UI.Bottle.Widgets.EventMapDoc as EventMapDoc
@@ -150,7 +151,7 @@ runEditor mFontPath windowMode db =
                         scheduleRefresh refreshScheduler
                 DefEvaluators.start evaluators
 
-                mainLoop win refreshScheduler configSampler $
+                mainLoop (SizedFont font 14) win refreshScheduler configSampler $
                     \config size ->
                     ( wrapFlyNav =<< makeWidgetCached (config, size)
                     , addHelpWithStyle (Style.help font (Config.help config)) size
@@ -165,13 +166,13 @@ scheduleRefresh :: RefreshScheduler -> IO ()
 scheduleRefresh (RefreshScheduler ref) = writeIORef ref True
 
 mainLoop ::
-    GLFW.Window -> RefreshScheduler -> Sampler ->
+    SizedFont -> GLFW.Window -> RefreshScheduler -> Sampler ->
     ( Config -> Widget.Size ->
         ( IO (Widget IO)
         , Widget IO -> IO (Widget IO)
         )
     ) -> IO ()
-mainLoop win refreshScheduler configSampler iteration =
+mainLoop font win refreshScheduler configSampler iteration =
     do
         lastVersionNumRef <- newIORef =<< getCurrentTime
         let getAnimHalfLife =
@@ -189,7 +190,7 @@ mainLoop win refreshScheduler configSampler iteration =
                     if configChanged
                         then return True
                         else shouldRefresh refreshScheduler
-        mainLoopWidget win tickHandler makeWidget getAnimHalfLife
+        mainLoopWidget font win tickHandler makeWidget getAnimHalfLife
 
 cacheMakeWidget :: Eq a => (a -> IO (Widget IO)) -> IO (IO (), a -> IO (Widget IO))
 cacheMakeWidget mkWidget =
