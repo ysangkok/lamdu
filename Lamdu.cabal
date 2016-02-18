@@ -18,8 +18,6 @@ Data-files:          fonts/DejaVuSans.ttf
                    , config.json
 
 Executable lamdu
-  hs-Source-Dirs: .
-                  , submodules/AlgoW
   Build-depends:    aeson >= 0.6.2.1 && < 0.11
                   , base >= 4.7
                   , base-compat >= 0.8.2 && < 0.10
@@ -222,7 +220,6 @@ Executable lamdu
                   , Lamdu.Infer.Load
                   , Lamdu.Infer.Unify
                   , Lamdu.Infer.Update
-                  , Lamdu.Main
                   , Lamdu.Opts
                   , Lamdu.Style
                   , Lamdu.Sugar.Convert
@@ -273,7 +270,7 @@ Executable lamdu
   ghc-options:         -O2 -Wall -threaded
   -- ghc-options is prepended to ghc-prof-options
   ghc-prof-options:    -auto-all -caf-all -rtsopts
-  main-is:        Lamdu/Main.hs
+  main-is:        Main.hs
 
 source-repository head
   type: git

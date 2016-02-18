@@ -3,7 +3,6 @@ module Lamdu.DataFile
     ) where
 
 import           Control.Lens.Operators
-import           Paths_Lamdu (getDataFileName)
 import qualified System.Directory as Directory
 import           System.FilePath ((</>))
 
@@ -12,8 +11,6 @@ getLamduDir = Directory.getHomeDirectory <&> (</> ".lamdu")
 
 getDataFilePath :: FilePath -> FilePath -> IO FilePath
 getDataFilePath startDir fileName =
-    do
-        exists <- Directory.doesFileExist customPath
-        if exists then return customPath else getDataFileName fileName
+    return customPath
     where
         customPath = startDir </> fileName
