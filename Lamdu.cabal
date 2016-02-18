@@ -20,7 +20,6 @@ Data-files:          fonts/DejaVuSans.ttf
 Executable lamdu
   hs-Source-Dirs: .
                   , submodules/AlgoW
-                  , bottlelib
   Build-depends:    aeson >= 0.6.2.1 && < 0.11
                   , base >= 4.7
                   , base-compat >= 0.8.2 && < 0.10
