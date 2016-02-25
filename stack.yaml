@@ -5,7 +5,7 @@ packages:
     commit: 2d8f9efb610dcf69c28ae9fbb8799565cef10612
 - location:
     git: https://github.com/Peaker/language-ecmascript
-    commit: 2c71e37ad055163a9926ee53e5297146de9b435c
+    commit: 2f0bdca9890b4ba25c7c648881f20b1e5c8468c4
 
 resolver: nightly-2016-02-05
 extra-deps:
@@ -15,6 +15,7 @@ extra-deps:
 - bitmap-opengl-0.0.1.5
 - stb-image-0.2.1
 - text-1.2.2.0
+- pretty-compact-1.0
 
 extra-include-dirs:
 - /usr/local/include
