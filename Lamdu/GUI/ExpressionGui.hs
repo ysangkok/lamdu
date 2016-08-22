@@ -9,6 +9,7 @@ module Lamdu.GUI.ExpressionGui
     , ExprGuiT.fromValueWidget
     , pad
     , stdHSpace, stdVSpace
+    , addAfter, addAfterWithSpace
     , combine, combineSpaced
     , (||>), (<||)
     , addBelow, addBelowWithSpace, vboxTopFocal, vboxTopFocalSpaced

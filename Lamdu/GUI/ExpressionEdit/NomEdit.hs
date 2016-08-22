@@ -41,28 +41,51 @@ makeToNom ::
     Sugar.Nominal (Name m) (ExprGuiT.SugarExpr m) ->
     Sugar.Payload m ExprGuiT.Payload ->
     ExprGuiM m (ExpressionGui m)
-makeToNom = mkNomGui precBefore "«" (\a b -> [a, b]) (||>)
+makeToNom = mkNomGui precBefore "«" ExpressionGui.addAfter
 
 makeFromNom ::
     Monad m =>
     Sugar.Nominal (Name m) (ExprGuiT.SugarExpr m) ->
     Sugar.Payload m ExprGuiT.Payload ->
     ExprGuiM m (ExpressionGui m)
-makeFromNom = mkNomGui precAfter "»" (\a b -> [b, a]) (flip (<||))
+makeFromNom = mkNomGui precAfter "»" (flip ExpressionGui.addAfter)
 
 nomPrecedence :: Int
 nomPrecedence = 9
+
+-- | Makes the arrows&name combination widget that:
+-- Vertical: shows names
+-- Horizontal & focused: hovers name
+-- Horizontal & not focused: only arrows label
+makeIndicator ::
+    Monad m => String -> WidgetF ((,) Alignment) (T m Widget.EventResult) ->
+    ShowName -> Widget.Id ->
+    ExprGuiM m (ExpressionGui m)
+makeIndicator str nameWidget showName myId =
+    do
+        addBg <- ExpressionGui.addValBGWithColor Config.valNomBGColor myId
+        label <-
+            ExpressionGui.grammarLabel str (Widget.toAnimId myId)
+            <&> Widget.takesFocus (const (pure myId))
+        return $ ExprGuiT.ExpressionGui $ \layoutParams ->
+            case layoutParams ^. ExprGuiT.layoutContext of
+            ExprGuiT.LayoutVertical ->
+                label & Layout.addAfter Layout.Horizontal [nameWidget]
+            _ ->
+                case showName of
+                NameCollapsed -> addBg label
+                NameShowing -> nameShowing
+                NameHovering -> nameShowing `h` label
 
 mkNomGui ::
     Monad m =>
     Lens.ASetter' Precedence Int ->
     String ->
-    (ExpressionGui m -> ExpressionGui m -> [ExpressionGui m]) ->
-    (WidgetF ((,) Alignment) (T m Widget.EventResult) -> ExpressionGui m -> ExpressionGui m) ->
+    (ExpressionGui m -> ExpressionGui m -> ExpressionGui m) ->
     Sugar.Nominal (Name m) (ExprGuiT.SugarExpr m) ->
     Sugar.Payload m ExprGuiT.Payload ->
     ExprGuiM m (ExpressionGui m)
-mkNomGui nameSidePrecLens str asList hCombine nom@(Sugar.Nominal _ val) pl =
+mkNomGui nameSidePrecLens str addAfter nom@(Sugar.Nominal _ val) pl =
     ExprGuiM.withLocalPrecedence (nameSidePrecLens .~ 0) $
     ExpressionGui.stdWrapParentExpr pl $
     \myId ->
@@ -74,19 +97,17 @@ mkNomGui nameSidePrecLens str asList hCombine nom@(Sugar.Nominal _ val) pl =
         let nomId = Widget.joinId myId ["nom"]
         let nameId = Widget.joinId nomId ["name"]
         isSelected <- WE.isSubCursor nomId & ExprGuiM.widgetEnv
-        let nameShowing
+        let showName
                 | ExprGuiT.plOfHoleResult pl = NameShowing
                 | isSelected = NameHovering
                 | otherwise = NameCollapsed
-        let mTakesFocus
-                | isSelected = id
-                | otherwise = Widget.takesFocus (const (pure nameId))
-        expandingName asList hCombine needParen nomId nameShowing
-            <*> (ExpressionGui.grammarLabel str (Widget.toAnimId myId)
-                <&> mTakesFocus)
-            <*> (ExpressionGui.makeFocusableView nameId
-                 <*> mkNameGui nom nameId)
-            <*> ExprGuiM.makeSubexpression (nameSidePrecLens .~ nomPrecedence+1) val
+        nameWidget <- mkNameWidget nom nameId
+        nomIndicator <- makeIndicator str nameWidget showName nomId
+        addAfter nomIndicator
+            <$> ExprGuiM.makeSubexpression (nameSidePrecLens .~ nomPrecedence+1) val
+        -- expandingName asList hCombine needParen nomId showName arrowsLabel
+        --     <*> (ExpressionGui.makeFocusableView nameId <*> )
+        --     <*> ExprGuiM.makeSubexpression (nameSidePrecLens .~ nomPrecedence+1) val
     & ExprGuiM.assignCursor myId valId
     where
         valId = val ^. Sugar.rPayload . Sugar.plEntityId & WidgetIds.fromEntityId
@@ -107,7 +128,6 @@ expandingName ::
 expandingName vertOrder (#>) needParen nomId showName =
     do
         space <- ExpressionGui.stdHSpace <&> Layout.fromCenteredWidget
-        addBg <- ExpressionGui.addValBGWithColor Config.valNomBGColor nomId
         h <- hover
         horizWithFallback <- ExpressionGui.horizVertFallback mParenInfo
         return $
@@ -131,14 +151,15 @@ expandingName vertOrder (#>) needParen nomId showName =
                     <&> ExpressionGui.egAlignment . _1 .~ 0
                     & ExpressionGui.vboxTopFocal
             in horiz `horizWithFallback` vert
+            ExpressionGui.addAfter
     where
         mParenInfo
             | needParen = Widget.toAnimId nomId & Just
             | otherwise = Nothing
 
-mkNameGui ::
+mkNameWidget ::
     Monad m => Sugar.Nominal (Name m) a -> Widget.Id ->
     ExprGuiM m (WidgetF ((,) Alignment) b)
-mkNameGui (Sugar.Nominal tidg _val) nameId =
+mkNameWidget (Sugar.Nominal tidg _val) nameId =
     ExpressionGui.makeNameView (tidg ^. Sugar.tidgName) (Widget.toAnimId nameId)
     <&> Layout.fromCenteredWidget
