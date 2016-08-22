@@ -137,7 +137,7 @@ expandingName vertOrder (#>) needParen nomId showName =
                     { ExprGuiT._layoutMode = ExprGuiT.LayoutWide
                     , ExprGuiT._layoutContext = ExprGuiT.LayoutClear
                     }
-                    & (nameGui #> ExpressionGui.fromLayout label) ^. ExpressionGui.toLayout
+                    & (nameGui #> ExpressionGui.fromLayout label) ^. ExpressionGui.egWidget
                     & addBg
                 horiz =
                     case showName of

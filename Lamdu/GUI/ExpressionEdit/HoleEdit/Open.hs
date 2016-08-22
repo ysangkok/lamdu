@@ -303,7 +303,7 @@ makeFocusable = ExprGuiM.widgetEnv . BWidgets.makeFocusableView
 applyResultLayout ::
     Functor f => f (ExpressionGui m) -> f (WidgetF ((,) Alignment) (T m Widget.EventResult))
 applyResultLayout fGui =
-    fGui <&> (^. ExpressionGui.toLayout)
+    fGui <&> (^. ExpressionGui.egWidget)
     ?? ExprGuiT.LayoutParams
         { _layoutMode = ExprGuiT.LayoutWide
         , _layoutContext = ExprGuiT.LayoutClear
@@ -492,7 +492,7 @@ makeUnderCursorAssignment shownResultsLists hasHiddenResults holeInfo =
                     & ( searchTermGui
                         & ExpressionGui.egWidget %~
                           Widget.weakerEvents searchTermEventMap
-                      ) ^. ExpressionGui.toLayout
+                      ) ^. ExpressionGui.egWidget
             in
                 w
                 & Layout.addAfter Layout.Vertical

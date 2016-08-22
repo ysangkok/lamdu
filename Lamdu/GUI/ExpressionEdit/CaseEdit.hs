@@ -164,8 +164,8 @@ makeOpenCase rest animId altsGui =
             <*> ExprGuiM.makeSubexpression (const 0) rest
         return $ ExpressionGui $
             \layoutMode ->
-            let restLayout = layoutMode & restExpr ^. ExpressionGui.toLayout
-                alts = layoutMode & altsGui ^. ExpressionGui.toLayout
+            let restLayout = layoutMode & restExpr ^. ExpressionGui.egWidget
+                alts = layoutMode & altsGui ^. ExpressionGui.egWidget
                 sepBarWidth = min (restLayout ^. Widget.width) (alts ^. Widget.width)
             in
             alts

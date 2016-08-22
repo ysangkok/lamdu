@@ -1,13 +1,14 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, DeriveFunctor #-}
 module Lamdu.GUI.ExpressionGui.Types
     ( ExpressionGuiM(..)
-    , ExpressionGui, toLayout
+    , ExpressionGui
       , egWidget, egAlignment
       , fromValueWidget, fromLayout
     , LayoutParams(..), layoutMode, layoutContext
     , LayoutMode(..), _LayoutNarrow, _LayoutWide
       , modeWidths
     , LayoutDisambiguationContext(..)
+    , TreeLayout(..), treeLayout
     , SugarExpr
     , Payload(..)
         , plStoredEntityIds, plNearestHoles, plShowAnnotation
@@ -24,6 +25,7 @@ module Lamdu.GUI.ExpressionGui.Types
 
 import qualified Control.Lens as Lens
 import           Control.Lens.Operators
+import           Control.Lens.Tuple
 import           Data.Store.Transaction (Transaction)
 import           Graphics.UI.Bottle.Alignment (Alignment)
 import           Graphics.UI.Bottle.Widget (Widget, WidgetF)
@@ -57,31 +59,27 @@ modeWidths :: Lens.Traversal' LayoutMode Widget.R
 modeWidths _ LayoutWide = pure LayoutWide
 modeWidths f (LayoutNarrow limit) = f limit <&> LayoutNarrow
 
+newtype TreeLayout a = TreeLayout
+    { _treeLayout :: LayoutParams -> (Alignment, a)
+    } deriving Functor
+Lens.makeLenses ''TreeLayout
+
 newtype ExpressionGuiM m = ExpressionGui
-    { _toLayout :: LayoutParams -> WidgetF ((,) Alignment) (m Widget.EventResult)
+    { _egWidget :: WidgetF TreeLayout (m Widget.EventResult)
     }
 Lens.makeLenses ''ExpressionGuiM
 
 type ExpressionGui m = ExpressionGuiM (T m)
 
 fromLayout :: WidgetF ((,) Alignment) (m Widget.EventResult) -> ExpressionGuiM m
-fromLayout = ExpressionGui . const
+fromLayout = ExpressionGui . Widget.hoist (TreeLayout . const)
 
 fromValueWidget :: Widget (m Widget.EventResult) -> ExpressionGuiM m
 fromValueWidget = fromLayout . Layout.fromCenteredWidget
 
-{-# INLINE egWidget #-}
-egWidget ::
-    Lens.Setter
-    (ExpressionGuiM m)
-    (ExpressionGuiM n)
-    (WidgetF ((,) Alignment) (m Widget.EventResult))
-    (WidgetF ((,) Alignment) (n Widget.EventResult))
-egWidget = toLayout . Lens.mapped
-
 {-# INLINE egAlignment #-}
-egAlignment :: Lens.Setter' (ExpressionGuiM m) Layout.Alignment
-egAlignment = egWidget . Layout.alignment
+egAlignment :: Lens.Setter' (ExpressionGuiM m) Alignment
+egAlignment f = egWidget (Widget.widgetF ((treeLayout . Lens.mapped . _1) f))
 
 data EvalModeShow = EvalModeShowNothing | EvalModeShowType | EvalModeShowEval
     deriving (Eq, Ord, Show)

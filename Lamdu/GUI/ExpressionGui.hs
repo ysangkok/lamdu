@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, RecordWildCards, OverloadedStrings, RankNTypes, TypeFamilies, LambdaCase, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 module Lamdu.GUI.ExpressionGui
     ( ExpressionGuiM(..)
-    , ExpressionGui, toLayout, egWidget, egAlignment
+    , ExpressionGui, egWidget, egAlignment
       , ExprGuiT.fromLayout, egIsFocused
     , LayoutMode(..), LayoutParams(..), LayoutDisambiguationContext(..)
     , render
@@ -42,6 +42,7 @@ module Lamdu.GUI.ExpressionGui
     , stdWrapParentExpr
     ) where
 
+import           Control.Lens (Lens')
 import qualified Control.Lens as Lens
 import           Control.Lens.Operators
 import           Control.Lens.Tuple
@@ -49,6 +50,7 @@ import           Data.Binary.Utils (encodeS)
 import           Data.CurAndPrev (CurAndPrev(..), CurPrevTag(..), curPrevTag, fallbackToPrev)
 import qualified Data.List.Utils as ListUtils
 import           Data.Maybe (fromMaybe)
+import           Data.Monoid ((<>))
 import           Data.Store.Property (Property(..))
 import           Data.Store.Transaction (Transaction)
 import           Data.String (IsString(..))
@@ -60,13 +62,14 @@ import           Graphics.UI.Bottle.Animation (AnimId)
 import qualified Graphics.UI.Bottle.Animation as Anim
 import qualified Graphics.UI.Bottle.EventMap as E
 import           Graphics.UI.Bottle.ModKey (ModKey(..))
-import           Graphics.UI.Bottle.View (View)
+import           Graphics.UI.Bottle.View (View(..))
 import qualified Graphics.UI.Bottle.View as View
-import           Graphics.UI.Bottle.Widget (Widget, WidgetF)
+import           Graphics.UI.Bottle.Widget (Widget, WidgetF(..), WidgetData(..), Focus(..))
 import qualified Graphics.UI.Bottle.Widget as Widget
 import qualified Graphics.UI.Bottle.Widgets as BWidgets
 import qualified Graphics.UI.Bottle.Widgets.Box as Box
 import qualified Graphics.UI.Bottle.Widgets.FocusDelegator as FocusDelegator
+import qualified Graphics.UI.Bottle.Widgets.Grid as Grid
 import qualified Graphics.UI.Bottle.Widgets.Layout as Layout
 import qualified Graphics.UI.Bottle.Widgets.TextEdit as TextEdit
 import qualified Graphics.UI.Bottle.Widgets.TextView as TextView
@@ -87,11 +90,11 @@ import           Lamdu.GUI.ExpressionGui.Types ( ExpressionGuiM(..), ExpressionG
                                                , ShowAnnotation(..), EvalModeShow(..)
                                                , egWidget, egAlignment
                                                , modeWidths
-                                               , LayoutMode(..)
+                                               , LayoutMode(..), layoutMode
+                                               , LayoutDisambiguationContext(..), layoutContext
                                                , LayoutParams(..)
-                                               , layoutMode, layoutContext
-                                               , LayoutDisambiguationContext(..)
-                                               , toLayout
+                                               , TreeLayout(..), treeLayout
+                                               , egWidget
                                                )
 import qualified Lamdu.GUI.ExpressionGui.Types as ExprGuiT
 import           Lamdu.GUI.Precedence (MyPrecedence(..), ParentPrecedence(..), Precedence(..))
@@ -108,41 +111,38 @@ type T = Transaction
 
 {-# INLINE egIsFocused #-}
 egIsFocused :: ExpressionGui m -> Bool
--- TODO: Fix this:
-egIsFocused (ExpressionGui mkLayout) =
-    mkLayout params & Widget.isFocused
-    where
-        params =
-            LayoutParams
-            { _layoutMode = LayoutWide
-            , _layoutContext = LayoutClear
-            }
+-- TODO: Remove this
+egIsFocused (ExpressionGui widget) = Widget.isFocused widget
 
 pad :: Vector2 Widget.R -> ExpressionGui m -> ExpressionGui m
 pad p =
-    toLayout %~ f
+    egWidget %~ Widget.hoist (treeLayout %~ f)
     where
+        f ::
+            (LayoutParams -> (Alignment, WidgetData tag a)) ->
+            LayoutParams -> (Alignment, WidgetData tag a)
         f mkLayout layoutParams =
             layoutParams
             & layoutMode . modeWidths -~ 2 * (p ^. _1)
             & mkLayout
-            & Widget.hoist (Layout.pad p)
+            & Layout.pad p
 
 maybeIndent :: Maybe ParenIndentInfo -> ExpressionGui m -> ExpressionGui m
 maybeIndent mPiInfo =
-    toLayout %~ f
+    egWidget %~ Widget.hoist (treeLayout %~ f)
     where
+        f ::
+            (LayoutParams -> (Alignment, WidgetData tag a)) ->
+            LayoutParams -> (Alignment, WidgetData tag a)
         f mkLayout lp =
             case (lp ^. layoutContext, mPiInfo) of
             (LayoutVertical, Just piInfo) ->
                 content
-                & Widget.hoist
-                    ( ( _2 . Widget.wView . View.animFrame <>~
-                        Anim.backgroundColor bgAnimId 0
-                        (Config.indentBarColor indentConf)
-                        (Vector2 barWidth (content ^. Widget.height))
-                    ) . Layout.assymetricPad (Vector2 (barWidth + gapWidth) 0) 0
-                    )
+                & Layout.assymetricPad (Vector2 (barWidth + gapWidth) 0) 0
+                & _2 . Widget.wView . View.animFrame <>~
+                  Anim.backgroundColor bgAnimId 0
+                  (Config.indentBarColor indentConf)
+                  (Vector2 barWidth (content ^. _2 . Widget.wView . View.height))
                 where
                     indentConf = piIndentConfig piInfo
                     stdSpace = piStdHorizSpacing piInfo
@@ -152,22 +152,115 @@ maybeIndent mPiInfo =
                     content =
                         lp & layoutMode . modeWidths -~ indentWidth
                         & mkLayout
-                        & Layout.alignment . _2 .~ 0
+                        & _1 . _2 .~ 0
                     bgAnimId = piAnimId piInfo ++ ["("]
             _ -> mkLayout lp
 
+-- This is a duplication of the logic inside (vertical) Grid that
+-- takes into account the TreeLayout considerations
+adjacant ::
+    Lens' (Vector2 Widget.R) Widget.R ->
+    (Widget.R -> Widget.R -> Vector2 Widget.R) ->
+    (Widget.MEnter a -> Widget.MEnter a -> [[Widget.MEnter a]]) ->
+    (Widget.R -> Widget.R -> Widget.R) ->
+    (Vector2 Widget.R -> Vector2 Widget.R -> Vector2 Widget.R) ->
+    (Focus t0 a -> Focus t1 a -> Focus t2 a) ->
+    (Alignment, WidgetData t0 a) ->
+    (Alignment, WidgetData t1 a) ->
+    (Alignment, WidgetData t2 a)
+adjacant axis vector2 asRows moveWho selectAlign selectFocus aRel bRel =
+    ( selectAlign (aAlign + aTranslation) (bAlign + bTranslation)
+    , WidgetData
+      { _wView =
+        View
+        { _size = size
+        , _animFrame = aTranslated ^. frame <> bTranslated ^. frame
+        }
+      , _wMEnter =
+        asRows (aTranslated ^. Widget.wMEnter) (bTranslated ^. Widget.wMEnter)
+        & Grid.combineMEnters size
+      , _wFocus =
+        selectFocus
+        (aTranslated ^. Widget.wFocus)
+        (bTranslated ^. Widget.wFocus)
+      }
+    ) ^. Lens.from Layout.absAlignedWidget
+    where
+        size =
+            max
+            <$> aData ^. sz + aTranslation
+            <*> bData ^. sz + bTranslation
+        sz = Widget.wView . View.size
+        frame = Widget.wView . View.animFrame
+        (aAlign, aData) = aRel ^. Layout.absAlignedWidget
+        (bAlign, bData) = bRel ^. Layout.absAlignedWidget
+        aAlignX = aAlign ^. axis
+        bAlignX = bAlign ^. axis
+        aHeight = aData ^. Widget.wView . View.height
+        bHeight = bData ^. Widget.wView . View.height
+        aTranslation = vector2 (max 0 (bAlignX - aAlignX)) (moveWho bHeight 0)
+        bTranslation = vector2 (max 0 (aAlignX - bAlignX)) (moveWho 0 aHeight)
+        aTranslated = aData & Widget.translate aTranslation
+        bTranslated = bData & Widget.translate bTranslation
+
+adjacantV ::
+    (Widget.R -> Widget.R -> Widget.R) ->
+    (Vector2 Widget.R -> Vector2 Widget.R -> Vector2 Widget.R) ->
+    (Focus t0 a -> Focus t1 a -> Focus t2 a) ->
+    (Alignment, WidgetData t0 a) ->
+    (Alignment, WidgetData t1 a) ->
+    (Alignment, WidgetData t2 a)
+adjacantV = adjacant _1 Vector2 (\x y -> [[x], [y]])
+
+adjacantH ::
+    (Widget.R -> Widget.R -> Widget.R) ->
+    (Vector2 Widget.R -> Vector2 Widget.R -> Vector2 Widget.R) ->
+    (Focus t0 a -> Focus t1 a -> Focus t2 a) ->
+    (Alignment, WidgetData t0 a) ->
+    (Alignment, WidgetData t1 a) ->
+    (Alignment, WidgetData t2 a)
+adjacantH = adjacant _2 (flip Vector2) (\x y -> [[x, y]])
+
+combineWidgets ::
+    (forall tag0 tag1 tag2.
+     t0 (WidgetData tag0 a) -> t1 (WidgetData tag1 a) ->
+     (Focus tag0 a -> Focus tag1 a -> Focus tag2 a) -> t2 (WidgetData tag2 a)) ->
+    WidgetF t0 a -> WidgetF t1 a -> WidgetF t2 a
+combineWidgets _ (WidgetFocused _) (WidgetFocused _) =
+    error "addBelow combining two focused widgets!"
+combineWidgets combiner (WidgetFocused f) (WidgetNotFocused g) =
+    combiner f g (\x NoFocusData -> x) & WidgetFocused
+combineWidgets combiner (WidgetNotFocused f) (WidgetFocused g) =
+    combiner f g (\NoFocusData y -> y) & WidgetFocused
+combineWidgets combiner (WidgetNotFocused f) (WidgetNotFocused g) =
+    combiner f g (\NoFocusData NoFocusData -> NoFocusData) & WidgetNotFocused
+
+addBelowH ::
+    TreeLayout (WidgetData t0 a) -> TreeLayout (WidgetData t1 a) ->
+    (Focus t0 a -> Focus t1 a -> Focus t2 a) -> TreeLayout (WidgetData t2 a)
+addBelowH (TreeLayout f) (TreeLayout g) selectFocus =
+    TreeLayout r
+    where
+        r layoutParams =
+            adjacantV moveSecond alignToTop selectFocus (f childParams) (g childParams)
+            where
+                moveSecond _ x = x
+                alignToTop x _ = x
+                childParams = layoutParams & layoutContext .~ LayoutVertical
+
+addBelowW :: WidgetF TreeLayout a -> WidgetF TreeLayout a -> WidgetF TreeLayout a
+addBelowW = combineWidgets addBelowH
+
+-- TODO: Replace with addBelowW
 addBelow :: ExpressionGuiM m -> ExpressionGuiM m -> ExpressionGuiM m
-addBelow (ExpressionGui x) (ExpressionGui y) =
-    ExpressionGui $ \layoutParams ->
-    let cp = layoutParams & layoutContext .~ LayoutVertical
-    in Layout.addAfter Layout.Vertical [y cp] (x cp)
+addBelow (ExpressionGui x) (ExpressionGui y) = ExpressionGui $ addBelowW x y
 
 addBelowWithSpaceH ::
     Widget.R -> ExpressionGuiM f -> ExpressionGuiM f -> ExpressionGuiM f
 addBelowWithSpaceH height x y =
     y
-    & toLayout . Lens.mapped %~
-        Widget.hoist (Layout.assymetricPad (Vector2 0 height) 0)
+    & egWidget %~
+        Widget.hoist (treeLayout . Lens.mapped %~ Layout.assymetricPad (Vector2 0 height) 0)
     & addBelow x
 
 addBelowWithSpace ::
@@ -190,28 +283,35 @@ vboxTopFocalSpaced =
     [] -> ExprGuiT.fromLayout Layout.empty
     _ -> foldl1 add xs
 
-hCombine ::
-    (Layout.Orientation ->
-     [WidgetF ((,) Alignment) (T f Widget.EventResult)] ->
-     WidgetF ((,) Alignment) (T f Widget.EventResult) ->
-     WidgetF ((,) Alignment) (T f Widget.EventResult)) ->
-    WidgetF ((,) Alignment) (T f Widget.EventResult) -> ExpressionGui f -> ExpressionGui f
-hCombine f layout gui =
-    ExpressionGui $
-    \layoutParams ->
-    LayoutParams
-    { _layoutMode =
-        layoutParams ^. layoutMode & modeWidths -~ layout ^. Widget.width
-    , _layoutContext = LayoutHorizontal
-    }
-    & gui ^. toLayout
-    & f Layout.Horizontal [layout]
+adjacantHH moveWho selectAlign (TreeLayout a) b selectFocus =
+    TreeLayout f
+    where
+        f layoutParams =
+            adjacantH moveWho selectAlign selectFocus renderedA b
+            where
+                bWidth = b ^. _2 . Widget.wView . View.width
+                renderedA =
+                    layoutParams
+                    & layoutMode . modeWidths -~ bWidth
+                    & a
+
+hCombine moveWho selectAlign = combineWidgets (adjacantHH moveWho selectAlign)
 
 (||>) :: WidgetF ((,) Alignment) (T f Widget.EventResult) -> ExpressionGui f -> ExpressionGui f
-(||>) = hCombine Layout.addBefore
+a ||> ExpressionGui b =
+    hCombine moveFirst alignFirst b a & ExpressionGui
+    where
+        -- We flipped the order of a and b, so first is actually the right
+        alignFirst x _ = x
+        -- We flipped the order of a and b, so first is actually the right
+        moveFirst x _ = x
 
 (<||) :: ExpressionGui f -> WidgetF ((,) Alignment) (T f Widget.EventResult) -> ExpressionGui f
-(<||) = flip (hCombine Layout.addAfter)
+ExpressionGui a <|| b =
+    hCombine moveRight alignLeft a b & ExpressionGui
+    where
+        alignLeft x _ = x
+        moveRight _ y = y
 
 stdHSpace :: Monad m => ExprGuiM m (Widget a)
 stdHSpace =
@@ -247,10 +347,10 @@ horizVertFallback mParenId =
 horizVertFallbackH ::
     Maybe ParenIndentInfo ->
     ExpressionGui m -> ExpressionGui m -> ExpressionGui m
-horizVertFallbackH mParenInfo horiz vert =
+horizVertFallbackH mParenInfo (ExpressionGui horiz) (ExpressionGui vert) =
     ExpressionGui $
     \layoutParams ->
-    let wide = layoutParams & layoutMode .~ LayoutWide & horiz ^. toLayout
+    let wide = layoutParams & layoutMode .~ LayoutWide & horiz ^. egWidget
     in
     case layoutParams ^. layoutMode of
     LayoutWide ->
@@ -262,7 +362,7 @@ horizVertFallbackH mParenInfo horiz vert =
         _ -> wide
     LayoutNarrow limit
         | wide ^. Widget.width > limit ->
-            layoutParams & maybeIndent mParenInfo vert ^. toLayout
+            layoutParams & maybeIndent mParenInfo vert ^. egWidget
         | otherwise -> wide
 
 addAfterH ::
@@ -282,9 +382,9 @@ addAfterH mParenInfo spaces focal after =
             }
         wide =
             Layout.addAfter Layout.Horizontal
-            [ (after ^. toLayout) wideCp
+            [ (after ^. egWidget) wideCp
                 & Widget.hoist (Layout.assymetricPad (spaces & _2 .~ 0) 0)
-            ] ((focal ^. toLayout) wideCp)
+            ] ((focal ^. egWidget) wideCp)
             & ExprGuiT.fromLayout
 
 addAfter :: ExpressionGui m -> ExpressionGui m -> ExpressionGui m
@@ -828,7 +928,7 @@ listWithDelDests = ListUtils.withPrevNext
 
 render :: Widget.R -> ExpressionGuiM m -> WidgetF ((,) Alignment) (m Widget.EventResult)
 render width gui =
-    (gui ^. toLayout)
+    (gui ^. egWidget)
     LayoutParams
     { _layoutMode = LayoutNarrow width
     , _layoutContext = LayoutClear

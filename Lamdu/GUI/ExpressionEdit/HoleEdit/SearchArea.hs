@@ -62,8 +62,8 @@ makeStdWrapped pl holeInfo =
                  \gui ->
                  ExpressionGui $
                  \layout ->
-                 (gui ^. ExpressionGui.toLayout) layout
+                 (gui ^. ExpressionGui.egWidget) layout
                  & Widget.hoist
                  (`Layout.hoverInPlaceOf`
-                 (closedSearchTermGui ^. ExpressionGui.toLayout) layout)
+                 (closedSearchTermGui ^. ExpressionGui.egWidget) layout)
             else return closedSearchTermGui

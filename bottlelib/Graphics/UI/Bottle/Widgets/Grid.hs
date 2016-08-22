@@ -4,6 +4,8 @@ module Graphics.UI.Bottle.Widgets.Grid
     , Alignment(..)
     , Cursor
     , Keys(..), stdKeys
+
+    , combineMEnters
     ) where
 
 import           Control.Applicative (liftA2)

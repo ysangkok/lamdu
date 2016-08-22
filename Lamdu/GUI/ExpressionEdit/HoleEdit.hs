@@ -117,11 +117,11 @@ make hole pl =
                                         \layoutMode ->
                                         (layoutMode & lay
                                         (wrapperGui & ExpressionGui.egAlignment . _1 .~ 0)
-                                        searchAreaGui ^. ExpressionGui.toLayout)
+                                        searchAreaGui ^. ExpressionGui.egWidget)
                                         & Widget.hoist
                                         (`Layout.hoverInPlaceOf`
                                         (layoutMode
-                                        & unfocusedWrapperGui ^. ExpressionGui.toLayout
+                                        & unfocusedWrapperGui ^. ExpressionGui.egWidget
                                         & Layout.alignment . _1 .~ 0))
                         if ExpressionGui.egIsFocused wrapperGui
                             then layout addSearchAreaBelow
