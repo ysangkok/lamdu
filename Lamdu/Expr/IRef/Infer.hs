@@ -7,7 +7,9 @@ module Lamdu.Expr.IRef.Infer
     , run
     ) where
 
+import           Control.Monad.Trans.Class (MonadTrans)
 import           Control.Monad.Trans.Either (EitherT(..), hoistEither)
+import           Control.Monad.Trans.Reader (ReaderT(..))
 import           Control.Monad.Trans.State (StateT(..), mapStateT)
 import           Data.Store.Transaction (Transaction)
 import qualified Data.Store.Transaction as Transaction
@@ -28,7 +30,7 @@ import           Lamdu.Prelude
 
 type T = Transaction
 
-loader :: Monad m => Loader (EitherT InferErr.Error (T m))
+loader :: (MonadTrans trans, Monad m, Monad (trans (T m))) => Loader (trans (T m))
 loader =
     Loader
     { InferLoad.loadTypeOf =
@@ -38,15 +40,16 @@ loader =
     , InferLoad.loadNominal = lift . Load.nominal
     }
 
-type M m = StateT Infer.Context (EitherT InferErr.Error (T m))
+type E m = EitherT InferErr.Error (T m)
+type M m = ReaderT (Loader (E m)) (StateT Infer.Context (E m))
 
 liftInfer :: Monad m => Infer a -> M m a
-liftInfer = mapStateT hoistEither . Infer.run
+liftInfer = lift . mapStateT hoistEither . Infer.run
 
 loadInferScope ::
     Monad m => Infer.Scope -> Val a -> M m (Val (Infer.Payload, a))
 loadInferScope scope val =
-    InferLoad.loadInfer loader scope val & lift >>= liftInfer
+    InferLoad.loadInfer loader scope val & lift & lift >>= liftInfer
 
 loadInferInto ::
     Monad m => Infer.Payload -> Val a -> M m (Val (Infer.Payload, a))
@@ -68,5 +71,5 @@ loadInferRecursive defI val =
                 Infer.insertTypeOf (ExprIRef.globalId defI) defType Infer.emptyScope
         loadInferInto (Infer.Payload defType scope) val
 
-run :: M m a -> T m (Either InferErr.Error (a, Infer.Context))
-run = runEitherT . (`runStateT` Infer.initialContext)
+run :: Monad m => M m a -> T m (Either InferErr.Error (a, Infer.Context))
+run = runEitherT . (`runStateT` Infer.initialContext) . (`runReaderT` loader)
