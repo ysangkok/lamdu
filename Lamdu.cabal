@@ -306,6 +306,180 @@ Executable lamdu
   -- ghc-options is prepended to ghc-prof-options
   ghc-prof-options:    -auto-all -caf-all -rtsopts
   main-is:             Lamdu/Main.hs
+Executable janus
+  ghc-options:         -O2 -Wall -threaded
+  -- ghc-options is prepended to ghc-prof-options
+  ghc-prof-options:    -auto-all -caf-all -rtsopts
+  main-is: Janus.hs
+  hs-Source-Dirs: .
+  Build-Depends:    AlgoW
+                  , GLFW-b
+                  , JuicyPixels
+                  , Lamdu
+                  , List >= 0.5.1
+                  , OpenGL
+                  , aeson
+                  , aeson-pretty
+                  , base >= 4.7
+                  , base-compat
+                  , base-orphans >= 0.5.0
+                  , base16-bytestring
+                  , binary
+                  , bytestring
+                  , containers
+                  , data-default >= 0.5
+                  , deepseq
+                  , deepseq-generics >= 0.1
+                  , directory
+                  , distributive
+                  , either
+                  , filepath
+                  , graphics-drawingcombinators
+                  , hashable
+                  , lamdu-calculus
+                  , language-ecmascript >= 0.17
+                  , lens
+                  , nodejs-exec
+                  , random
+                  , text
+                  , time
+                  , process
+                  , transformers
+                  , unordered-containers
+                  , vector
+                  , void >= 0.6.1
+                  , wl-pprint >= 1.2
+                  , uuid-aeson
+                  , uuid-types
+                  , zip-archive
+                  , leveldb-haskell >= 0.6
+  if flag(noprettyclass)
+    build-depends:  pretty >=1.1.2 && <1.2
+  else
+    build-depends:  pretty >=1.1 && <1.1.2
+                  , prettyclass ==1.0.0.0
+  Other-Modules:    Lamdu.Builtins.Anchors
+                  , Lamdu.Builtins.PrimVal
+                  , Lamdu.CharClassification
+                  , Lamdu.Compiler.Flatten
+                  , Lamdu.Config
+                  , Lamdu.Config.Sampler
+                  , Lamdu.Data.Anchors
+                  , Lamdu.Data.DbInit
+                  , Lamdu.Data.DbLayout
+                  , Lamdu.Data.Definition
+                  , Lamdu.Data.Export.Codejam
+                  , Lamdu.Data.Export.JSON
+                  , Lamdu.Data.Export.JSON.Codec
+                  , Lamdu.Data.Export.JSON.Process
+                  , Lamdu.Data.Ops
+                  , Lamdu.Data.Ops.Subexprs
+                  , Lamdu.DataFile
+                  , Lamdu.Eval.JS
+                  , Lamdu.Eval.JS.Compiler
+                  , Lamdu.Eval.Manager
+                  , Lamdu.Eval.Results
+                  , Lamdu.Eval.Results.Process
+                  , Lamdu.Expr.GenIds
+                  , Lamdu.Expr.IRef
+                  , Lamdu.Expr.IRef.Infer
+                  , Lamdu.Expr.Load
+                  , Lamdu.Expr.RecordVal
+                  , Lamdu.Expr.UniqueId
+                  , Lamdu.Font
+                  , Lamdu.Formatting
+                  , Lamdu.GUI.CodeEdit
+                  , Lamdu.GUI.CodeEdit.Settings
+                  , Lamdu.GUI.DefinitionEdit
+                  , Lamdu.GUI.EvalView
+                  , Lamdu.GUI.ExpressionEdit
+                  , Lamdu.GUI.ExpressionEdit.ApplyEdit
+                  , Lamdu.GUI.ExpressionEdit.BinderEdit
+                  , Lamdu.GUI.ExpressionEdit.BuiltinEdit
+                  , Lamdu.GUI.ExpressionEdit.CaseEdit
+                  , Lamdu.GUI.ExpressionEdit.EventMap
+                  , Lamdu.GUI.ExpressionEdit.GetFieldEdit
+                  , Lamdu.GUI.ExpressionEdit.GetVarEdit
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.Common
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.EventMap
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.Info
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.Open
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.ResultGroups
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.SearchArea
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.SearchTerm
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.ShownResult
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.State
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.ValTerms
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.WidgetIds
+                  , Lamdu.GUI.ExpressionEdit.HoleEdit.Wrapper
+                  , Lamdu.GUI.ExpressionEdit.InjectEdit
+                  , Lamdu.GUI.ExpressionEdit.LambdaEdit
+                  , Lamdu.GUI.ExpressionEdit.LiteralEdit
+                  , Lamdu.GUI.ExpressionEdit.NomEdit
+                  , Lamdu.GUI.ExpressionEdit.RecordEdit
+                  , Lamdu.GUI.ExpressionEdit.TagEdit
+                  , Lamdu.GUI.ExpressionGui
+                  , Lamdu.GUI.ExpressionGui.Monad
+                  , Lamdu.GUI.ExpressionGui.Types
+                  , Lamdu.GUI.LightLambda
+                  , Lamdu.GUI.Main
+                  , Lamdu.GUI.ParamEdit
+                  , Lamdu.GUI.Precedence
+                  , Lamdu.GUI.RedundantAnnotations
+                  , Lamdu.GUI.Scroll
+                  , Lamdu.GUI.TypeView
+                  , Lamdu.GUI.VersionControl
+                  , Lamdu.GUI.VersionControl.Config
+                  , Lamdu.GUI.WidgetIdIRef
+                  , Lamdu.GUI.WidgetIds
+                  , Lamdu.GUI.Zoom
+                  , Lamdu.Main
+                  , Lamdu.Opts
+                  , Lamdu.Prelude
+                  , Lamdu.Style
+                  , Lamdu.Sugar.Convert
+                  , Lamdu.Sugar.Convert.Apply
+                  , Lamdu.Sugar.Convert.Binder
+                  , Lamdu.Sugar.Convert.Binder.Float
+                  , Lamdu.Sugar.Convert.Binder.Inline
+                  , Lamdu.Sugar.Convert.Binder.Params
+                  , Lamdu.Sugar.Convert.Binder.Redex
+                  , Lamdu.Sugar.Convert.Binder.Types
+                  , Lamdu.Sugar.Convert.Case
+                  , Lamdu.Sugar.Convert.DefExpr
+                  , Lamdu.Sugar.Convert.Expression
+                  , Lamdu.Sugar.Convert.Expression.Actions
+                  , Lamdu.Sugar.Convert.GetField
+                  , Lamdu.Sugar.Convert.GetVar
+                  , Lamdu.Sugar.Convert.Hole
+                  , Lamdu.Sugar.Convert.Hole.ResultScore
+                  , Lamdu.Sugar.Convert.Hole.Suggest
+                  , Lamdu.Sugar.Convert.Inject
+                  , Lamdu.Sugar.Convert.Input
+                  , Lamdu.Sugar.Convert.Monad
+                  , Lamdu.Sugar.Convert.Nominal
+                  , Lamdu.Sugar.Convert.ParamList
+                  , Lamdu.Sugar.Convert.Record
+                  , Lamdu.Sugar.Convert.TIdG
+                  , Lamdu.Sugar.Convert.Text
+                  , Lamdu.Sugar.EntityId
+                  , Lamdu.Sugar.Internal
+                  , Lamdu.Sugar.Internal.EntityId
+                  , Lamdu.Sugar.Lens
+                  , Lamdu.Sugar.Names.Add
+                  , Lamdu.Sugar.Names.CPS
+                  , Lamdu.Sugar.Names.Get
+                  , Lamdu.Sugar.Names.NameGen
+                  , Lamdu.Sugar.Names.Types
+                  , Lamdu.Sugar.Names.Walk
+                  , Lamdu.Sugar.NearestHoles
+                  , Lamdu.Sugar.OrderTags
+                  , Lamdu.Sugar.PresentationModes
+                  , Lamdu.Sugar.Types
+                  , Lamdu.VersionControl
+                  , Lamdu.VersionControl.Actions
+                  , Paths_Lamdu
 
 source-repository head
   type: git

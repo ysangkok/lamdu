@@ -2,6 +2,7 @@
 
 module Lamdu.Data.Export.Codejam
     ( exportFancy
+    , compile
     ) where
 
 import qualified Codec.Archive.Zip as Zip
