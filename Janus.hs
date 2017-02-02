@@ -9,9 +9,12 @@ import qualified Lamdu.Expr.IRef as ExprIRef
 import           Data.Store.Transaction (Transaction)
 import qualified Data.Store.Transaction as Transaction
 import           Data.Store.Db (Db)
-import           Lamdu.Calc.Val.Annotated (Val)
+import qualified Lamdu.Calc.Val.Annotated as Annotated (Val(..), body)
 import qualified Lamdu.VersionControl as VersionControl
 import Lamdu.Data.Export.Codejam (compile)
+-- import qualified Lamdu.Data.Definition as Def
+import Control.Lens.Getter (view)
+import qualified Lamdu.Calc.Val as Val
 
 withDb :: MVar (Maybe Db) -> (Db -> IO a) -> IO a
 withDb mvar action =
@@ -30,7 +33,20 @@ runViewTransactionInIO dbM trans =
 main = do
         withDB "/home/janus/.lamdu" $ \db -> do
           dbmvar <- newMVar (Just db)
-          let x = Transaction.readIRef (DbLayout.repl DbLayout.codeIRefs) >>= ExprIRef.readVal :: Transaction ViewM (Val (ExprIRef.ValI ViewM))
-          res <- runViewTransactionInIO dbmvar x
-          compiled <- runViewTransactionInIO dbmvar ( compile res )
-          print compiled
+          let x = Transaction.readIRef (DbLayout.repl DbLayout.codeIRefs) >>= ExprIRef.readVal
+          val <- runViewTransactionInIO dbmvar x
+          compiled <- runViewTransactionInIO dbmvar ( compile val )
+          Val.BApp val <- return $ view Annotated.body val
+          val <- pure $ view Val.applyArg val
+          Val.BRecExtend val <- pure $ view Annotated.body val
+          val <- pure $ view Val.recFieldVal val
+          Val.BApp val <- return $ view Annotated.body val
+          val <- pure $ view Val.applyArg val
+          Val.BRecExtend val <- pure $ view Annotated.body val
+          val <- pure $ view Val.recFieldVal val
+          Val.BLeaf val <- return $ view Annotated.body val
+          case val of
+            Val.LLiteral (Val.PrimVal p d) -> print $ (p, d)
+            _ -> error "lol"
+          -- print res
+          -- print compiled
