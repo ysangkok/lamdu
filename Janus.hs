@@ -15,6 +15,9 @@ import Lamdu.Data.Export.Codejam (compile)
 -- import qualified Lamdu.Data.Definition as Def
 import Control.Lens.Getter (view)
 import qualified Lamdu.Calc.Val as Val
+import qualified Lamdu.Calc.Type
+import Lamdu.Calc.Identifier (Identifier(..))
+import Data.ByteString.Char8 (pack)
 
 withDb :: MVar (Maybe Db) -> (Db -> IO a) -> IO a
 withDb mvar action =
@@ -45,8 +48,11 @@ main = do
           Val.BRecExtend val <- pure $ view Annotated.body val
           val <- pure $ view Val.recFieldVal val
           Val.BLeaf val <- return $ view Annotated.body val
+          let x = (Lamdu.Calc.Type.NominalId $ Identifier $ pack "BI:float\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL" , pack "\SOH\SOH\NUL\NUL\NUL\NUL\NUL\NUL\NUL\a\NUL\224X=\177|\DC1\255\255\255\255\255\255\255\243")
           case val of
-            Val.LLiteral (Val.PrimVal p d) -> print $ (p, d)
+            Val.LLiteral (Val.PrimVal p d) -> do
+              print $ (p, d)
+              print $ x == (p, d)
             _ -> error "lol"
           -- print res
           -- print compiled
