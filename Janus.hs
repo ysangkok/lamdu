@@ -33,26 +33,33 @@ runViewTransactionInIO dbM trans =
     withDb dbM $ \db ->
     DbLayout.runDbTransaction db (VersionControl.runAction trans)
 
+doFun readRef compiled = do
+          Val.BApp val <- return $ view Annotated.body readRef
+          val <- pure $ view Val.applyArg val
+          Val.BRecExtend val <- pure $ view Annotated.body val
+          val <- pure $ view Val.recFieldVal val
+          Val.BApp val <- return $ view Annotated.body val
+          val <- pure $ view Val.applyArg val
+          Val.BRecExtend val <- pure $ view Annotated.body val
+          val2 <- pure $ view Val.recFieldVal val
+          Val.BLeaf val <- return $ view Annotated.body val2
+          return (val, val2)
+
 main = do
         withDB "/home/janus/.lamdu" $ \db -> do
           dbmvar <- newMVar (Just db)
           let x = Transaction.readIRef (DbLayout.repl DbLayout.codeIRefs) >>= ExprIRef.readVal
-          val <- runViewTransactionInIO dbmvar x
-          compiled <- runViewTransactionInIO dbmvar ( compile val )
-          Val.BApp val <- return $ view Annotated.body val
-          val <- pure $ view Val.applyArg val
-          Val.BRecExtend val <- pure $ view Annotated.body val
-          val <- pure $ view Val.recFieldVal val
-          Val.BApp val <- return $ view Annotated.body val
-          val <- pure $ view Val.applyArg val
-          Val.BRecExtend val <- pure $ view Annotated.body val
-          val <- pure $ view Val.recFieldVal val
-          Val.BLeaf val <- return $ view Annotated.body val
+          readRef <- runViewTransactionInIO dbmvar x
+          compiled <- runViewTransactionInIO dbmvar ( compile readRef )
+          (val, val2) <- doFun readRef compiled
           let x = (Lamdu.Calc.Type.NominalId $ Identifier $ pack "BI:float\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL" , pack "\SOH\SOH\NUL\NUL\NUL\NUL\NUL\NUL\NUL\a\NUL\224X=\177|\DC1\255\255\255\255\255\255\255\243")
+          let y = Val.LLiteral (Val.PrimVal (fst x) (snd x))
+          let z2 = y == val
+          -- let z = (Annotated.Val (Val.BLeaf y)) == val2
           case val of
             Val.LLiteral (Val.PrimVal p d) -> do
               print $ (p, d)
-              print $ x == (p, d)
+              print $ z
             _ -> error "lol"
           -- print res
           -- print compiled
